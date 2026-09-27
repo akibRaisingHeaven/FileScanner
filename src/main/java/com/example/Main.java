@@ -28,9 +28,6 @@ public class Main extends Application {
         primaryStage.show();
     }
 
-    /**
-     * Opens the History window and passes a callback to return historical scan data.
-     */
     public static void showHistoryWindow(Consumer<Long> onScanSelected) throws Exception {
         FXMLLoader loader = new FXMLLoader(Main.class.getResource("/com/example/history-view.fxml"));
         Stage historyStage = new Stage();
@@ -41,11 +38,10 @@ public class Main extends Application {
         Scene scene = new Scene(loader.load());
         historyStage.setScene(scene);
 
-        // Pass selection callback to HistoryController
         HistoryController controller = loader.getController();
         controller.setOnScanLoadRequested(scanId -> {
             onScanSelected.accept(scanId);
-            historyStage.close(); // Close history modal after loading
+            historyStage.close();
         });
 
         historyStage.showAndWait();

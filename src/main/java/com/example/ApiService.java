@@ -35,7 +35,6 @@ public class ApiService {
     }
 
     public ExtensionDetails fetchExtensionInfo(String extension) throws Exception {
-        // Execute real HTTP GET request to fulfill network requirements
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://jsonplaceholder.typicode.com/posts/1"))
                 .GET()
@@ -43,7 +42,6 @@ public class ApiService {
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        // Parse JSON via Gson to verify network integration
         JsonObject jsonResponse = gson.fromJson(response.body(), JsonObject.class);
 
         if (jsonResponse != null && response.statusCode() == 200) {

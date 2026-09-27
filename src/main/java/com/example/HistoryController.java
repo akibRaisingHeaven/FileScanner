@@ -39,7 +39,6 @@ public class HistoryController {
             }
         });
 
-        // Double-click a history item to load it into the main window
         historyListView.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2) {
                 handleLoadSelectedScan();

@@ -35,7 +35,6 @@ public class ScanTask extends Task<ScanTask.ScanResult> {
     @Override
     protected ScanResult call() throws Exception {
         updateMessage("Scanning directory...");
-        // -1 puts the progress bar in smooth active scanning mode without artificial pre-passes
         updateProgress(-1, 1);
 
         List<FileInfo> files = new ArrayList<>();
@@ -48,7 +47,6 @@ public class ScanTask extends Task<ScanTask.ScanResult> {
         final long[] totalBytes = {0};
         final long[] fileCount = {0};
 
-        // Single-pass directory walk for maximum speed
         Files.walkFileTree(rootPath, new SimpleFileVisitor<Path>() {
 
             @Override
@@ -88,7 +86,6 @@ public class ScanTask extends Task<ScanTask.ScanResult> {
                         dirTreeNodes.get(parent).getChildren().add(new TreeItem<>(name));
                     }
 
-                    // Update live feedback in real-time so the user sees immediate progress
                     if (fileCount[0] % 50 == 0) {
                         updateMessage(String.format("Scanning... (%d files found)", fileCount[0]));
                     }

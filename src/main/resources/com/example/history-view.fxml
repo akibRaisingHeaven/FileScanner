@@ -10,10 +10,8 @@
         <Insets bottom="15.0" left="15.0" right="15.0" top="15.0" />
     </padding>
     <children>
-        <!-- Past Scan List -->
         <ListView fx:id="historyListView" prefWidth="320.0" />
 
-        <!-- Side-by-Side Pie Charts -->
         <PieChart fx:id="countChart" title="File Types (Count)" HBox.hgrow="ALWAYS" />
         <PieChart fx:id="sizeChart" title="File Types (Size in MB)" HBox.hgrow="ALWAYS" />
     </children>

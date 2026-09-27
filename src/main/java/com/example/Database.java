@@ -15,16 +15,10 @@ public class Database {
 
     private static final String DB_URL = "jdbc:sqlite:filescanner.db";
 
-    /**
-     * Establishes a connection to the SQLite database.
-     */
     public static Connection connect() throws SQLException {
         return DriverManager.getConnection(DB_URL);
     }
 
-    /**
-     * Initializes database tables if they do not exist.
-     */
     public static void initializeDatabase() {
         String createHistoryTable = """
             CREATE TABLE IF NOT EXISTS scan_history (
@@ -66,15 +60,12 @@ public class Database {
         }
     }
 
-    /**
-     * Saves scan metadata and file details into SQLite using a batch transaction.
-     */
     public static void saveScanResult(String rootPath, List<FileInfo> files, long totalSize) throws SQLException {
         String insertHistorySql = "INSERT INTO scan_history (directory_path, total_files, total_size_bytes) VALUES (?, ?, ?)";
         String insertFileSql = "INSERT INTO scanned_files (scan_id, file_name, file_path, file_size_bytes, file_extension) VALUES (?, ?, ?, ?, ?)";
 
         try (Connection conn = connect()) {
-            conn.setAutoCommit(false); // Enable batch transaction for speed
+            conn.setAutoCommit(false);
 
             long scanId = -1;
             try (PreparedStatement pstmtHistory = conn.prepareStatement(insertHistorySql, Statement.RETURN_GENERATED_KEYS)) {
@@ -141,13 +132,11 @@ public class Database {
             ResultSet rs = pstmt.executeQuery();
 
             while (rs.next()) {
-                // Retrieve values using the schema defined in initializeDatabase()
                 String fileName = rs.getString("file_name");
                 String filePath = rs.getString("file_path");
                 long sizeBytes = rs.getLong("file_size_bytes");
                 String extension = rs.getString("file_extension");
 
-                // Pass the arguments matching your FileInfo constructor
                 FileInfo file = new FileInfo(fileName, filePath, sizeBytes, extension);
                 files.add(file);
             }

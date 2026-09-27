@@ -21,7 +21,7 @@ import java.util.concurrent.Executors;
 public class Controller {
 
     @FXML private TextField pathTextField;
-    @FXML private TextField searchTextField; // Added search text field
+    @FXML private TextField searchTextField;
     @FXML private Button browseButton;
     @FXML private Button scanButton;
     @FXML private Button cancelButton;
@@ -54,10 +54,8 @@ public class Controller {
         colExtension.setCellValueFactory(cellData -> new SimpleStringProperty(cellData.getValue().getExtension()));
         colPath.setCellValueFactory(cellData -> new SimpleStringProperty(cellData.getValue().getPath()));
 
-        // 1. Wrap master list in FilteredList
         filteredFileList = new FilteredList<>(masterFileList, p -> true);
 
-        // 2. Bind filter predicate to search text field changes
         searchTextField.textProperty().addListener((observable, oldValue, newValue) -> {
             filteredFileList.setPredicate(file -> {
                 if (newValue == null || newValue.trim().isEmpty()) {
@@ -68,11 +66,9 @@ public class Controller {
             });
         });
 
-        // 3. Wrap FilteredList in SortedList to maintain TableView column sorting
         SortedList<FileInfo> sortedData = new SortedList<>(filteredFileList);
         sortedData.comparatorProperty().bind(fileTableView.comparatorProperty());
 
-        // 4. Set table items to sorted/filtered wrapper
         fileTableView.setItems(sortedData);
 
         fileTableView.setRowFactory(tv -> {
@@ -113,7 +109,6 @@ public class Controller {
 
             directoryTreeView.setRoot(result.rootTreeItem);
 
-            // Clear current filter and update master list
             searchTextField.clear();
             masterFileList.setAll(result.fileList);
 
