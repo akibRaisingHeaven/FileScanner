@@ -28,6 +28,8 @@
                         <Button fx:id="browseButton" onAction="#handleBrowse" text="Browse..." />
                         <Button fx:id="scanButton" onAction="#handleScan" text="Start Scan" style="-fx-base: #2ecc71; -fx-text-fill: white;" />
                         <Button fx:id="cancelButton" disable="true" onAction="#handleCancel" text="Cancel" style="-fx-base: #e74c3c; -fx-text-fill: white;" />
+                        <Button text="Inspect Format" onAction="#handleFetchApiData" style="-fx-base: #3498db; -fx-text-fill: white;" />
+                        <Button text="View History" onAction="#handleShowHistory" style="-fx-base: #8e44ad; -fx-text-fill: white;" />
                     </children>
                 </HBox>
                 <HBox alignment="CENTER_LEFT" spacing="10.0">

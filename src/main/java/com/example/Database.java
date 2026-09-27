@@ -2,8 +2,12 @@ package com.example;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Database {
 
@@ -20,7 +24,6 @@ public class Database {
      * Initializes database tables if they do not exist.
      */
     public static void initializeDatabase() {
-        // SQL statement to create scan history table
         String createHistoryTable = """
             CREATE TABLE IF NOT EXISTS scan_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +34,6 @@ public class Database {
             );
             """;
 
-        // SQL statement to create file metadata table
         String createFilesTable = """
             CREATE TABLE IF NOT EXISTS scanned_files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,10 +49,11 @@ public class Database {
         try (Connection conn = connect();
              Statement stmt = conn.createStatement()) {
 
-            // Enable foreign key constraints in SQLite
             stmt.execute("PRAGMA foreign_keys = ON;");
 
-            // Execute table creation
+//            stmt.execute("DROP TABLE IF EXISTS scanned_files;");
+//            stmt.execute("DROP TABLE IF EXISTS scan_history;");
+
             stmt.execute(createHistoryTable);
             stmt.execute(createFilesTable);
 
@@ -59,5 +62,70 @@ public class Database {
         } catch (SQLException e) {
             System.err.println("Database initialization failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Saves scan metadata and file details into SQLite using a batch transaction.
+     */
+    public static void saveScanResult(String rootPath, List<FileInfo> files, long totalSize) throws SQLException {
+        String insertHistorySql = "INSERT INTO scan_history (directory_path, total_files, total_size_bytes) VALUES (?, ?, ?)";
+        String insertFileSql = "INSERT INTO scanned_files (scan_id, file_name, file_path, file_size_bytes, file_extension) VALUES (?, ?, ?, ?, ?)";
+
+        try (Connection conn = connect()) {
+            conn.setAutoCommit(false); // Enable batch transaction for speed
+
+            long scanId = -1;
+            try (PreparedStatement pstmtHistory = conn.prepareStatement(insertHistorySql, Statement.RETURN_GENERATED_KEYS)) {
+                pstmtHistory.setString(1, rootPath);
+                pstmtHistory.setInt(2, files.size());
+                pstmtHistory.setLong(3, totalSize);
+                pstmtHistory.executeUpdate();
+
+                try (ResultSet rs = pstmtHistory.getGeneratedKeys()) {
+                    if (rs.next()) {
+                        scanId = rs.getLong(1);
+                    }
+                }
+            }
+
+            if (scanId != -1) {
+                try (PreparedStatement pstmtFile = conn.prepareStatement(insertFileSql)) {
+                    for (FileInfo file : files) {
+                        pstmtFile.setLong(1, scanId);
+                        pstmtFile.setString(2, file.getName());
+                        pstmtFile.setString(3, file.getPath());
+                        pstmtFile.setLong(4, file.getSizeBytes());
+                        pstmtFile.setString(5, file.getExtension());
+                        pstmtFile.addBatch();
+                    }
+                    pstmtFile.executeBatch();
+                }
+            }
+
+            conn.commit(); // Commit all records at once
+        }
+    }
+
+    public static List<String> fetchScanHistory() {
+        List<String> history = new ArrayList<>();
+        String sql = "SELECT id, directory_path, total_files, total_size_bytes, scan_timestamp FROM scan_history ORDER BY scan_timestamp DESC";
+
+        try (Connection conn = connect();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                String record = String.format("[%s] ID #%d - %s (%d files, %d bytes)",
+                        rs.getString("scan_timestamp"),
+                        rs.getInt("id"),
+                        rs.getString("directory_path"),
+                        rs.getInt("total_files"),
+                        rs.getLong("total_size_bytes"));
+                history.add(record);
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to fetch history: " + e.getMessage());
+        }
+        return history;
     }
 }
