@@ -24,17 +24,17 @@
                 <HBox alignment="CENTER_LEFT" spacing="10.0">
                     <children>
                         <Label text="Target Directory:" />
-                        <TextField fx:id="pathTextField" HBox.hgrow="ALWAYS" promptText="Select or paste a directory path..." />
+                        <TextField fx:id="pathTextField" promptText="Select or paste a directory path..." HBox.hgrow="ALWAYS" />
                         <Button fx:id="browseButton" onAction="#handleBrowse" text="Browse..." />
-                        <Button fx:id="scanButton" onAction="#handleScan" text="Start Scan" style="-fx-base: #2ecc71; -fx-text-fill: white;" />
-                        <Button fx:id="cancelButton" disable="true" onAction="#handleCancel" text="Cancel" style="-fx-base: #e74c3c; -fx-text-fill: white;" />
-                        <Button text="Inspect Format" onAction="#handleFetchApiData" style="-fx-base: #3498db; -fx-text-fill: white;" />
-                        <Button text="View History" onAction="#handleShowHistory" style="-fx-base: #8e44ad; -fx-text-fill: white;" />
+                        <Button fx:id="scanButton" onAction="#handleScan" style="-fx-base: #2ecc71; -fx-text-fill: white;" text="Start Scan" />
+                        <Button fx:id="cancelButton" disable="true" onAction="#handleCancel" style="-fx-base: #e74c3c; -fx-text-fill: white;" text="Cancel" />
+                        <Button onAction="#handleFetchApiData" style="-fx-base: #3498db; -fx-text-fill: white;" text="Inspect Format" />
+                        <Button onAction="#handleShowHistory" style="-fx-base: #8e44ad; -fx-text-fill: white;" text="View History" />
                     </children>
                 </HBox>
                 <HBox alignment="CENTER_LEFT" spacing="10.0">
                     <children>
-                        <ProgressBar fx:id="progressBar" progress="0.0" HBox.hgrow="ALWAYS" maxWidth="Infinity" />
+                        <ProgressBar fx:id="progressBar" maxWidth="Infinity" progress="0.0" HBox.hgrow="ALWAYS" />
                         <Label fx:id="statusLabel" text="Ready" />
                     </children>
                 </HBox>
@@ -49,7 +49,7 @@
                 <!-- Directory Hierarchy -->
                 <VBox spacing="5.0">
                     <children>
-                        <Label text="Folder Structure" style="-fx-font-weight: bold;">
+                        <Label style="-fx-font-weight: bold;" text="Folder Structure">
                             <VBox.margin>
                                 <Insets left="5.0" top="5.0" />
                             </VBox.margin>
@@ -58,14 +58,19 @@
                     </children>
                 </VBox>
 
-                <!-- Scanned Files Detail Table -->
+                <!-- Scanned Files Detail Table with Search Bar -->
                 <VBox spacing="5.0">
                     <children>
-                        <Label text="File Details" style="-fx-font-weight: bold;">
-                            <VBox.margin>
-                                <Insets left="5.0" top="5.0" />
-                            </VBox.margin>
-                        </Label>
+                        <HBox alignment="CENTER_LEFT" spacing="10.0">
+                            <padding>
+                                <Insets left="5.0" right="5.0" top="5.0" />
+                            </padding>
+                            <children>
+                                <Label style="-fx-font-weight: bold;" text="File Details" />
+                                <HBox HBox.hgrow="ALWAYS" />
+                                <TextField fx:id="searchTextField" prefWidth="220.0" promptText="🔍 Search files by name..." />
+                            </children>
+                        </HBox>
                         <TableView fx:id="fileTableView" VBox.vgrow="ALWAYS">
                             <columns>
                                 <TableColumn fx:id="colName" prefWidth="200.0" text="File Name" />

@@ -1,19 +1,27 @@
 package com.example;
 
+import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
+import javafx.collections.transformation.SortedList;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.stage.DirectoryChooser;
 
+import java.awt.Desktop;
 import java.io.File;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Controller {
 
     @FXML private TextField pathTextField;
+    @FXML private TextField searchTextField; // Added search text field
     @FXML private Button browseButton;
     @FXML private Button scanButton;
     @FXML private Button cancelButton;
@@ -32,60 +40,51 @@ public class Controller {
 
     private ScanTask currentScanTask;
 
+    // Master list holding active file data
+    private final ObservableList<FileInfo> masterFileList = FXCollections.observableArrayList();
+    private FilteredList<FileInfo> filteredFileList;
+
+    int coreCount = Runtime.getRuntime().availableProcessors();
+    private final ExecutorService threadPool = Executors.newFixedThreadPool(coreCount);
+
     @FXML
     public void initialize() {
-        // Configure table column value factories
         colName.setCellValueFactory(cellData -> new SimpleStringProperty(cellData.getValue().getName()));
         colSize.setCellValueFactory(cellData -> new SimpleStringProperty(cellData.getValue().getFormattedSize()));
         colExtension.setCellValueFactory(cellData -> new SimpleStringProperty(cellData.getValue().getExtension()));
         colPath.setCellValueFactory(cellData -> new SimpleStringProperty(cellData.getValue().getPath()));
-    }
 
-    @FXML
-    private void handleFetchApiData() {
-        FileInfo selectedFile = fileTableView.getSelectionModel().getSelectedItem();
-        if (selectedFile == null) {
-            showAlert(Alert.AlertType.WARNING, "No Selection", "Please select a file from the table first.");
-            return;
-        }
+        // 1. Wrap master list in FilteredList
+        filteredFileList = new FilteredList<>(masterFileList, p -> true);
 
-        statusLabel.setText("Fetching file extension info via HTTP...");
-
-        // Run HTTP Request on a background thread
-        Task<ApiService.ExtensionDetails> apiTask = new Task<>() {
-            @Override
-            protected ApiService.ExtensionDetails call() throws Exception {
-                ApiService service = new ApiService();
-                return service.fetchExtensionInfo(selectedFile.getExtension());
-            }
-        };
-
-        apiTask.setOnSucceeded(e -> {
-            ApiService.ExtensionDetails details = apiTask.getValue();
-            statusLabel.setText("API data fetched successfully.");
-
-            // Display parsed JSON data in an Alert Dialog
-            showAlert(Alert.AlertType.INFORMATION,
-                    "API Inspection: ." + selectedFile.getExtension(),
-                    "Format: " + details.getExtensionName() + "\n\nDetails: " + details.getDescription());
+        // 2. Bind filter predicate to search text field changes
+        searchTextField.textProperty().addListener((observable, oldValue, newValue) -> {
+            filteredFileList.setPredicate(file -> {
+                if (newValue == null || newValue.trim().isEmpty()) {
+                    return true;
+                }
+                String filterPattern = newValue.toLowerCase().trim();
+                return file.getName().toLowerCase().contains(filterPattern);
+            });
         });
 
-        apiTask.setOnFailed(e -> {
-            statusLabel.setText("API Request failed.");
-            showAlert(Alert.AlertType.ERROR, "Network Error", "Could not fetch JSON data: " + apiTask.getException().getMessage());
+        // 3. Wrap FilteredList in SortedList to maintain TableView column sorting
+        SortedList<FileInfo> sortedData = new SortedList<>(filteredFileList);
+        sortedData.comparatorProperty().bind(fileTableView.comparatorProperty());
+
+        // 4. Set table items to sorted/filtered wrapper
+        fileTableView.setItems(sortedData);
+
+        fileTableView.setRowFactory(tv -> {
+            TableRow<FileInfo> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && (!row.isEmpty())) {
+                    FileInfo selectedFile = row.getItem();
+                    openFileInSystem(selectedFile.getPath());
+                }
+            });
+            return row;
         });
-
-        new Thread(apiTask).start();
-    }
-
-    @FXML
-    private void handleBrowse() {
-        DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle("Select Directory to Scan");
-        File selectedDirectory = chooser.showDialog(pathTextField.getScene().getWindow());
-        if (selectedDirectory != null) {
-            pathTextField.setText(selectedDirectory.getAbsolutePath());
-        }
     }
 
     @FXML
@@ -113,7 +112,10 @@ public class Controller {
             ScanTask.ScanResult result = currentScanTask.getValue();
 
             directoryTreeView.setRoot(result.rootTreeItem);
-            fileTableView.setItems(FXCollections.observableArrayList(result.fileList));
+
+            // Clear current filter and update master list
+            searchTextField.clear();
+            masterFileList.setAll(result.fileList);
 
             totalFilesLabel.setText("Total Files: " + result.fileList.size());
             totalSizeLabel.setText("Total Size: " + formatSize(result.totalSizeBytes));
@@ -145,9 +147,69 @@ public class Controller {
             progressBar.setProgress(0);
         });
 
-        Thread scanThread = new Thread(currentScanTask);
-        scanThread.setDaemon(true);
-        scanThread.start();
+        threadPool.submit(currentScanTask);
+    }
+
+    private void loadHistoricalScanToMainTable(long scanId) {
+        List<FileInfo> historicalFiles = Database.fetchFilesByScanId(scanId);
+
+        if (historicalFiles != null && !historicalFiles.isEmpty()) {
+            searchTextField.clear();
+            masterFileList.setAll(historicalFiles);
+
+            long totalBytes = historicalFiles.stream().mapToLong(FileInfo::getSizeBytes).sum();
+            totalFilesLabel.setText("Total Files: " + historicalFiles.size());
+            totalSizeLabel.setText("Total Size: " + formatSize(totalBytes));
+
+            statusLabel.setText("Loaded Historical Scan ID #" + scanId);
+        } else {
+            showAlert(Alert.AlertType.WARNING, "No Data", "No file records found for Scan ID #" + scanId);
+        }
+    }
+
+    @FXML
+    private void handleFetchApiData() {
+        FileInfo selectedFile = fileTableView.getSelectionModel().getSelectedItem();
+        if (selectedFile == null) {
+            showAlert(Alert.AlertType.WARNING, "No Selection", "Please select a file from the table first.");
+            return;
+        }
+
+        statusLabel.setText("Fetching file extension info via HTTP...");
+
+        Task<ApiService.ExtensionDetails> apiTask = new Task<>() {
+            @Override
+            protected ApiService.ExtensionDetails call() throws Exception {
+                ApiService service = new ApiService();
+                return service.fetchExtensionInfo(selectedFile.getExtension());
+            }
+        };
+
+        apiTask.setOnSucceeded(e -> {
+            ApiService.ExtensionDetails details = apiTask.getValue();
+            statusLabel.setText("API data fetched successfully.");
+
+            showAlert(Alert.AlertType.INFORMATION,
+                    "API Inspection: ." + selectedFile.getExtension(),
+                    "Format: " + details.getExtensionName() + "\n\nDetails: " + details.getDescription());
+        });
+
+        apiTask.setOnFailed(e -> {
+            statusLabel.setText("API Request failed.");
+            showAlert(Alert.AlertType.ERROR, "Network Error", "Could not fetch JSON data: " + apiTask.getException().getMessage());
+        });
+
+        threadPool.submit(apiTask);
+    }
+
+    @FXML
+    private void handleBrowse() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("Select Directory to Scan");
+        File selectedDirectory = chooser.showDialog(pathTextField.getScene().getWindow());
+        if (selectedDirectory != null) {
+            pathTextField.setText(selectedDirectory.getAbsolutePath());
+        }
     }
 
     @FXML
@@ -173,12 +235,36 @@ public class Controller {
             return;
         }
 
-        StringBuilder sb = new StringBuilder("Past Directory Scans:\n\n");
-        for (String entry : history) {
-            sb.append(entry).append("\n");
+        try {
+            Main.showHistoryWindow(this::loadHistoricalScanToMainTable);
+        } catch (Exception e) {
+            showAlert(Alert.AlertType.ERROR, "Error Opening View", "Could not load history window: " + e.getMessage());
         }
+    }
 
-        showAlert(Alert.AlertType.INFORMATION, "Database Scan History", sb.toString());
+    private void openFileInSystem(String filePath) {
+        try {
+            File file = new File(filePath);
+            if (file.exists()) {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                    threadPool.submit(() -> {
+                        try {
+                            Desktop.getDesktop().open(file);
+                        } catch (Exception e) {
+                            Platform.runLater(() ->
+                                    showAlert(Alert.AlertType.ERROR, "Error Opening File", "Could not open file: " + e.getMessage())
+                            );
+                        }
+                    });
+                } else {
+                    showAlert(Alert.AlertType.WARNING, "Not Supported", "Opening files is not supported on your system.");
+                }
+            } else {
+                showAlert(Alert.AlertType.ERROR, "File Not Found", "The file no longer exists at: " + filePath);
+            }
+        } catch (Exception e) {
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to open file: " + e.getMessage());
+        }
     }
 
     private void setControlsScanningState(boolean isScanning) {
@@ -193,13 +279,8 @@ public class Controller {
         statusLabel.textProperty().unbind();
     }
 
-    // Missing Helper Method
     private void showAlert(Alert.AlertType alertType, String title, String content) {
-        Alert alert = new Alert(alertType);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        Main.showAlert(alertType, title, content);
     }
 
     private String formatSize(long sizeBytes) {

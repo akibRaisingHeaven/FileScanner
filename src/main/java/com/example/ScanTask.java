@@ -16,7 +16,6 @@ public class ScanTask extends Task<ScanTask.ScanResult> {
 
     private final Path rootPath;
 
-    // A container to hold the results so we can pass them back to the Controller
     public static class ScanResult {
         public final TreeItem<String> rootTreeItem;
         public final List<FileInfo> fileList;
@@ -35,8 +34,9 @@ public class ScanTask extends Task<ScanTask.ScanResult> {
 
     @Override
     protected ScanResult call() throws Exception {
-        updateMessage("Counting total files...");
-        updateProgress(-1, 1); // Indeterminate progress state
+        updateMessage("Scanning directory...");
+        // -1 puts the progress bar in smooth active scanning mode without artificial pre-passes
+        updateProgress(-1, 1);
 
         List<FileInfo> files = new ArrayList<>();
         Map<Path, TreeItem<String>> dirTreeNodes = new HashMap<>();
@@ -46,9 +46,9 @@ public class ScanTask extends Task<ScanTask.ScanResult> {
         dirTreeNodes.put(rootPath, rootNode);
 
         final long[] totalBytes = {0};
-        final int[] fileCount = {0};
+        final long[] fileCount = {0};
 
-        // Walk the file tree using NIO for high performance
+        // Single-pass directory walk for maximum speed
         Files.walkFileTree(rootPath, new SimpleFileVisitor<Path>() {
 
             @Override
@@ -83,15 +83,14 @@ public class ScanTask extends Task<ScanTask.ScanResult> {
                     FileInfo fileInfo = new FileInfo(name, file.toAbsolutePath().toString(), size, ext);
                     files.add(fileInfo);
 
-                    // Add leaf node to tree under parent directory
                     Path parent = file.getParent();
                     if (parent != null && dirTreeNodes.containsKey(parent)) {
                         dirTreeNodes.get(parent).getChildren().add(new TreeItem<>(name));
                     }
 
-                    // Periodically update progress feedback
-                    if (fileCount[0] % 10 == 0) {
-                        updateMessage("Scanned " + fileCount[0] + " files...");
+                    // Update live feedback in real-time so the user sees immediate progress
+                    if (fileCount[0] % 50 == 0) {
+                        updateMessage(String.format("Scanning... (%d files found)", fileCount[0]));
                     }
                 }
                 return FileVisitResult.CONTINUE;
@@ -99,12 +98,10 @@ public class ScanTask extends Task<ScanTask.ScanResult> {
 
             @Override
             public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                // Ignore permission issues gracefully and continue scanning rest of directory
                 return FileVisitResult.CONTINUE;
             }
         });
 
-        // Save scan results to SQLite
         if (!isCancelled()) {
             updateMessage("Saving metadata to database...");
             Database.saveScanResult(rootPath.toString(), files, totalBytes[0]);
