@@ -40,7 +40,6 @@ public class Controller {
 
     private ScanTask currentScanTask;
 
-    // Master list holding active file data
     private final ObservableList<FileInfo> masterFileList = FXCollections.observableArrayList();
     private FilteredList<FileInfo> filteredFileList;
 

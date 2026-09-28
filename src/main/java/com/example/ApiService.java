@@ -40,12 +40,6 @@ public class ApiService {
         public String getDescription() { return description; }
     }
 
-    /**
-     * Sends an HTTP GET request to the Wikipedia API and parses the JSON response.
-     *
-     * Response shape (formatversion=2):
-     * { "query": { "pages": [ { "title": "...", "extract": "..." } ] } }
-     */
     public ExtensionDetails fetchExtensionInfo(String extension) throws Exception {
         if (extension == null || extension.isBlank()) {
             return new ExtensionDetails("No extension", "This file has no extension, so there is nothing to look up.");
@@ -76,7 +70,6 @@ public class ApiService {
         return parseResponse(response.body(), ext);
     }
 
-    // JSON parsing: walk query -> pages -> first page -> title / extract
     private ExtensionDetails parseResponse(String json, String ext) {
         JsonObject root = gson.fromJson(json, JsonObject.class);
 
@@ -101,7 +94,6 @@ public class ApiService {
         return (element != null && !element.isJsonNull()) ? element.getAsString() : fallback;
     }
 
-    // Some extensions are ambiguous as search terms, so refine them
     private String buildSearchTerm(String ext) {
         return switch (ext) {
             case "java" -> "Java programming language source file";

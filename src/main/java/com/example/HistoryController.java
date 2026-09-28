@@ -47,7 +47,6 @@ public class HistoryController {
         refreshHistory(0);
     }
 
-    // READ: (re)load the scan list from the database
     private void refreshHistory(int indexToSelect) {
         List<String> historyList = Database.fetchScanHistory();
         historyListView.setItems(FXCollections.observableArrayList(historyList));
@@ -60,7 +59,6 @@ public class HistoryController {
         historyListView.getSelectionModel().select(Math.min(indexToSelect, historyList.size() - 1));
     }
 
-    // UPDATE: edit the note of the selected scan
     @FXML
     private void handleEditNote() {
         int index = historyListView.getSelectionModel().getSelectedIndex();
@@ -90,7 +88,6 @@ public class HistoryController {
         }
     }
 
-    // DELETE: remove the selected scan (and its files via ON DELETE CASCADE)
     @FXML
     private void handleDeleteScan() {
         int index = historyListView.getSelectionModel().getSelectedIndex();

@@ -20,8 +20,6 @@ public class Database {
     public static final String NOTE_MARKER = " | Note: ";
 
     public static Connection connect() throws SQLException {
-        // Foreign keys are OFF by default in SQLite and must be enabled per connection,
-        // otherwise ON DELETE CASCADE will not work.
         SQLiteConfig config = new SQLiteConfig();
         config.enforceForeignKeys(true);
         return DriverManager.getConnection(DB_URL, config.toProperties());
@@ -61,11 +59,9 @@ public class Database {
             stmt.execute(createHistoryTable);
             stmt.execute(createFilesTable);
 
-            // Migration: add the "note" column to databases created by older versions.
             try {
                 stmt.execute("ALTER TABLE scan_history ADD COLUMN note TEXT");
             } catch (SQLException ignored) {
-                // Column already exists
             }
 
             System.out.println("Database initialized successfully.");
@@ -110,7 +106,7 @@ public class Database {
                 }
             }
 
-            conn.commit(); // Commit all records at once
+            conn.commit();
         }
     }
 
@@ -141,7 +137,6 @@ public class Database {
         return history;
     }
 
-    // UPDATE: attach or change a note on a saved scan
     public static boolean updateScanNote(long scanId, String note) {
         String sql = "UPDATE scan_history SET note = ? WHERE id = ?";
         try (Connection conn = connect();
@@ -155,7 +150,6 @@ public class Database {
         }
     }
 
-    // DELETE: remove a scan; its rows in scanned_files are removed by ON DELETE CASCADE
     public static boolean deleteScan(long scanId) {
         String sql = "DELETE FROM scan_history WHERE id = ?";
         try (Connection conn = connect();
