@@ -1,5 +1,7 @@
 package com.example;
 
+import org.sqlite.SQLiteConfig;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -15,8 +17,14 @@ public class Database {
 
     private static final String DB_URL = "jdbc:sqlite:filescanner.db";
 
+    public static final String NOTE_MARKER = " | Note: ";
+
     public static Connection connect() throws SQLException {
-        return DriverManager.getConnection(DB_URL);
+        // Foreign keys are OFF by default in SQLite and must be enabled per connection,
+        // otherwise ON DELETE CASCADE will not work.
+        SQLiteConfig config = new SQLiteConfig();
+        config.enforceForeignKeys(true);
+        return DriverManager.getConnection(DB_URL, config.toProperties());
     }
 
     public static void initializeDatabase() {
@@ -52,6 +60,13 @@ public class Database {
 
             stmt.execute(createHistoryTable);
             stmt.execute(createFilesTable);
+
+            // Migration: add the "note" column to databases created by older versions.
+            try {
+                stmt.execute("ALTER TABLE scan_history ADD COLUMN note TEXT");
+            } catch (SQLException ignored) {
+                // Column already exists
+            }
 
             System.out.println("Database initialized successfully.");
 
@@ -101,7 +116,7 @@ public class Database {
 
     public static List<String> fetchScanHistory() {
         List<String> history = new ArrayList<>();
-        String sql = "SELECT id, directory_path, total_files, total_size_bytes, scan_timestamp FROM scan_history ORDER BY scan_timestamp DESC";
+        String sql = "SELECT id, directory_path, total_files, total_size_bytes, scan_timestamp, note FROM scan_history ORDER BY scan_timestamp DESC";
 
         try (Connection conn = connect();
              Statement stmt = conn.createStatement();
@@ -114,12 +129,43 @@ public class Database {
                         rs.getString("directory_path"),
                         rs.getInt("total_files"),
                         rs.getLong("total_size_bytes"));
+                String note = rs.getString("note");
+                if (note != null && !note.isBlank()) {
+                    record += NOTE_MARKER + note;
+                }
                 history.add(record);
             }
         } catch (SQLException e) {
             System.err.println("Failed to fetch history: " + e.getMessage());
         }
         return history;
+    }
+
+    // UPDATE: attach or change a note on a saved scan
+    public static boolean updateScanNote(long scanId, String note) {
+        String sql = "UPDATE scan_history SET note = ? WHERE id = ?";
+        try (Connection conn = connect();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, note);
+            pstmt.setLong(2, scanId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("Error updating note: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // DELETE: remove a scan; its rows in scanned_files are removed by ON DELETE CASCADE
+    public static boolean deleteScan(long scanId) {
+        String sql = "DELETE FROM scan_history WHERE id = ?";
+        try (Connection conn = connect();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setLong(1, scanId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("Error deleting scan: " + e.getMessage());
+            return false;
+        }
     }
 
     public static List<FileInfo> fetchFilesByScanId(long scanId) {

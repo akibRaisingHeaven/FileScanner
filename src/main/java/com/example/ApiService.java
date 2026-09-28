@@ -1,15 +1,21 @@
 package com.example;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 public class ApiService {
+
+    private static final String WIKI_API = "https://en.wikipedia.org/w/api.php";
 
     private final HttpClient httpClient;
     private final Gson gson;
@@ -34,61 +40,76 @@ public class ApiService {
         public String getDescription() { return description; }
     }
 
+    /**
+     * Sends an HTTP GET request to the Wikipedia API and parses the JSON response.
+     *
+     * Response shape (formatversion=2):
+     * { "query": { "pages": [ { "title": "...", "extract": "..." } ] } }
+     */
     public ExtensionDetails fetchExtensionInfo(String extension) throws Exception {
+        if (extension == null || extension.isBlank()) {
+            return new ExtensionDetails("No extension", "This file has no extension, so there is nothing to look up.");
+        }
+
+        String ext = extension.toLowerCase().trim();
+        String searchTerm = URLEncoder.encode(buildSearchTerm(ext), StandardCharsets.UTF_8);
+
+        String url = WIKI_API
+                + "?action=query&format=json&formatversion=2"
+                + "&generator=search&gsrlimit=1&gsrsearch=" + searchTerm
+                + "&prop=extracts&exintro=1&explaintext=1&exsentences=3";
+
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://jsonplaceholder.typicode.com/posts/1"))
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .header("User-Agent", "FileScanner/1.0 (student project)")
+                .header("Accept", "application/json")
                 .GET()
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        JsonObject jsonResponse = gson.fromJson(response.body(), JsonObject.class);
-
-        if (jsonResponse != null && response.statusCode() == 200) {
-            return getFormattedDetails(extension != null ? extension.toLowerCase() : "");
-        } else {
+        if (response.statusCode() != 200) {
             throw new RuntimeException("API request failed with status code: " + response.statusCode());
         }
+
+        return parseResponse(response.body(), ext);
     }
 
-    private ExtensionDetails getFormattedDetails(String ext) {
+    // JSON parsing: walk query -> pages -> first page -> title / extract
+    private ExtensionDetails parseResponse(String json, String ext) {
+        JsonObject root = gson.fromJson(json, JsonObject.class);
+
+        if (root == null || !root.has("query")) {
+            return new ExtensionDetails("." + ext, "No online information was found for this file type.");
+        }
+
+        JsonArray pages = root.getAsJsonObject("query").getAsJsonArray("pages");
+        if (pages == null || pages.isEmpty()) {
+            return new ExtensionDetails("." + ext, "No online information was found for this file type.");
+        }
+
+        JsonObject page = pages.get(0).getAsJsonObject();
+        String title = getString(page, "title", "." + ext);
+        String extract = getString(page, "extract", "No description available.");
+
+        return new ExtensionDetails(title, extract.trim());
+    }
+
+    private String getString(JsonObject obj, String key, String fallback) {
+        JsonElement element = obj.get(key);
+        return (element != null && !element.isJsonNull()) ? element.getAsString() : fallback;
+    }
+
+    // Some extensions are ambiguous as search terms, so refine them
+    private String buildSearchTerm(String ext) {
         return switch (ext) {
-            case "jpg", "jpeg" -> new ExtensionDetails(
-                    "Joint Photographic Experts Group Image",
-                    "Standard lossy raster graphic image format widely used for digital photos and web graphics."
-            );
-            case "png" -> new ExtensionDetails(
-                    "Portable Network Graphics",
-                    "Raster graphics format supporting lossless data compression and alpha channel transparency."
-            );
-            case "pdf" -> new ExtensionDetails(
-                    "Portable Document Format",
-                    "Standard document format developed by Adobe for presenting documents independently of OS software."
-            );
-            case "exe" -> new ExtensionDetails(
-                    "Windows Executable File",
-                    "Binary executable file format used by Microsoft Windows to execute applications and processes."
-            );
-            case "dll" -> new ExtensionDetails(
-                    "Dynamic Link Library",
-                    "Shared library file containing code and data used by multiple Windows programs simultaneously."
-            );
-            case "zip" -> new ExtensionDetails(
-                    "ZIP Compressed Archive",
-                    "Standard archive format supporting lossless data compression for one or more files."
-            );
-            case "txt" -> new ExtensionDetails(
-                    "Plain Text Document",
-                    "Unformatted text file containing standard ASCII or UTF-8 encoded text characters."
-            );
-            case "java" -> new ExtensionDetails(
-                    "Java Source Code File",
-                    "Source code file written in Java, compiled into bytecode for execution on the Java Virtual Machine."
-            );
-            default -> new ExtensionDetails(
-                    ext.isEmpty() ? "Unknown / No Extension" : ext.toUpperCase() + " File Format",
-                    "Standard file system format extension."
-            );
+            case "java" -> "Java programming language source file";
+            case "txt" -> "text file";
+            case "exe" -> "Windows executable file format";
+            case "dll" -> "dynamic-link library";
+            case "jpg", "jpeg" -> "JPEG image format";
+            default -> ext + " file format";
         };
     }
 }

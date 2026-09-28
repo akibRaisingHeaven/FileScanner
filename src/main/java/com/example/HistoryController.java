@@ -4,10 +4,14 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.chart.PieChart;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ListView;
+import javafx.scene.control.TextInputDialog;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -26,13 +30,6 @@ public class HistoryController {
 
     @FXML
     public void initialize() {
-        List<String> historyList = Database.fetchScanHistory();
-        if (historyList.isEmpty()) {
-            return;
-        }
-
-        historyListView.setItems(FXCollections.observableArrayList(historyList));
-
         historyListView.getSelectionModel().selectedIndexProperty().addListener((obs, oldIdx, newIdx) -> {
             if (newIdx.intValue() >= 0) {
                 updateChartsForSelectedScan(historyListView.getItems().get(newIdx.intValue()));
@@ -47,7 +44,76 @@ public class HistoryController {
 
         countChart.setLabelsVisible(true);
         sizeChart.setLabelsVisible(true);
-        historyListView.getSelectionModel().select(0);
+        refreshHistory(0);
+    }
+
+    // READ: (re)load the scan list from the database
+    private void refreshHistory(int indexToSelect) {
+        List<String> historyList = Database.fetchScanHistory();
+        historyListView.setItems(FXCollections.observableArrayList(historyList));
+
+        if (historyList.isEmpty()) {
+            countChart.getData().clear();
+            sizeChart.getData().clear();
+            return;
+        }
+        historyListView.getSelectionModel().select(Math.min(indexToSelect, historyList.size() - 1));
+    }
+
+    // UPDATE: edit the note of the selected scan
+    @FXML
+    private void handleEditNote() {
+        int index = historyListView.getSelectionModel().getSelectedIndex();
+        String selected = historyListView.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            Main.showAlert(Alert.AlertType.WARNING, "No Selection", "Please select a scan first.");
+            return;
+        }
+
+        long scanId = parseScanId(selected);
+        int noteStart = selected.indexOf(Database.NOTE_MARKER);
+        String currentNote = noteStart >= 0 ? selected.substring(noteStart + Database.NOTE_MARKER.length()) : "";
+
+        TextInputDialog dialog = new TextInputDialog(currentNote);
+        dialog.setTitle("Edit Note");
+        dialog.setHeaderText("Scan ID #" + scanId);
+        dialog.setContentText("Note:");
+
+        Optional<String> result = dialog.showAndWait();
+        if (result.isPresent()) {
+            String note = result.get().trim();
+            if (Database.updateScanNote(scanId, note.isEmpty() ? null : note)) {
+                refreshHistory(index);
+            } else {
+                Main.showAlert(Alert.AlertType.ERROR, "Update Failed", "Could not update the note.");
+            }
+        }
+    }
+
+    // DELETE: remove the selected scan (and its files via ON DELETE CASCADE)
+    @FXML
+    private void handleDeleteScan() {
+        int index = historyListView.getSelectionModel().getSelectedIndex();
+        String selected = historyListView.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            Main.showAlert(Alert.AlertType.WARNING, "No Selection", "Please select a scan first.");
+            return;
+        }
+
+        long scanId = parseScanId(selected);
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Delete Scan");
+        confirm.setHeaderText("Delete scan ID #" + scanId + "?");
+        confirm.setContentText("This removes the scan and all of its file records from the database.");
+
+        Optional<ButtonType> result = confirm.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            if (Database.deleteScan(scanId)) {
+                refreshHistory(index);
+            } else {
+                Main.showAlert(Alert.AlertType.ERROR, "Delete Failed", "Could not delete the scan.");
+            }
+        }
     }
 
     @FXML
